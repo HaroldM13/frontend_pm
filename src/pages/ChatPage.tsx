@@ -369,14 +369,43 @@ export default function ChatPage() {
     finally { setEnviando(false); e.target.value = ''; }
   };
 
+  const comprimirImagenCliente = (archivo: File): Promise<File> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(archivo);
+      img.onload = () => {
+        const MAX = 1200;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+          else { width = Math.round(width * MAX / height); height = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { URL.revokeObjectURL(objectUrl); reject(new Error('Canvas no disponible')); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(objectUrl);
+        canvas.toBlob((blob) => {
+          if (!blob) { reject(new Error('No se pudo procesar la imagen')); return; }
+          resolve(new File([blob], 'foto.jpg', { type: 'image/jpeg' }));
+        }, 'image/jpeg', 0.85);
+      };
+      img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('No se pudo leer la imagen')); };
+      img.src = objectUrl;
+    });
+
   const enviarArchivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const archivo = e.target.files?.[0];
     if (!archivo || !salaActiva) return;
     setEnviando(true);
     try {
-      // Fotos tomadas con la cámara llegan como image/* — enviarlas por el endpoint de imagen
-      if (archivo.type.startsWith('image/')) {
-        await chatApi.enviarImagen(salaActiva.id, archivo, menciones);
+      const esImagen = archivo.type.startsWith('image/') || archivo.type === '';
+      if (esImagen) {
+        // Comprimir client-side — soporta cualquier formato incluyendo HEIC
+        const comprimido = await comprimirImagenCliente(archivo);
+        await chatApi.enviarImagen(salaActiva.id, comprimido, menciones);
       } else {
         await chatApi.enviarArchivo(salaActiva.id, archivo);
       }
