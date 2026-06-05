@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'icons/*.png'],
       manifest: {
-        name: 'JHT Project Manager',
-        short_name: 'JHT PM',
+        name: 'WorkChat',
+        short_name: 'WorkChat',
         description: 'Gestión de proyectos con chat corporativo integrado',
         theme_color: '#4F46E5',
         background_color: '#0F172A',

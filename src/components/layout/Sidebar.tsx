@@ -6,7 +6,6 @@ import {
   IconMessage2,
   IconUsers,
   IconLogout,
-  IconBriefcase,
   IconX,
   IconSun,
   IconMoon,
@@ -53,12 +52,10 @@ export default function Sidebar({ onClose, noLeidos = 0 }: SidebarProps) {
       {/* Logo + botón cerrar en mobile */}
       <div className="flex items-center justify-between px-4 py-5 border-b border-slate-700">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-indigo-600 rounded-lg flex-shrink-0">
-            <IconBriefcase size={20} className="text-white" />
-          </div>
+          <img src="/icon.svg" alt="WorkChat" className="w-9 h-9 flex-shrink-0" />
           <div>
-            <p className="font-bold text-sm text-white leading-tight">JHT Project</p>
-            <p className="text-xs text-slate-400 leading-tight">Manager</p>
+            <p className="font-bold text-sm text-white leading-tight">WorkChat</p>
+            <p className="text-xs text-slate-400 leading-tight">by JHT</p>
           </div>
         </div>
         {/* Solo visible en mobile para cerrar el sidebar */}

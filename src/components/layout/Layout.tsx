@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import { IconMenu2, IconBriefcase } from '@tabler/icons-react';
+import { IconMenu2 } from '@tabler/icons-react';
 import Sidebar from './Sidebar';
 import { chatApi } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -79,10 +79,8 @@ export default function Layout({ children }: LayoutProps) {
             )}
           </button>
           <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-indigo-600 rounded-lg">
-              <IconBriefcase size={16} className="text-white" />
-            </div>
-            <span className="font-bold text-slate-800 text-sm">JHT Project</span>
+            <img src="/icon.svg" alt="WorkChat" className="w-7 h-7" />
+            <span className="font-bold text-slate-800 dark:text-white text-sm">WorkChat</span>
           </div>
         </header>
 

@@ -347,7 +347,7 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={tarea.id}
-                    className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors group"
+                    className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
                   >
                     <button
                       onClick={() => navigate(`/proyectos/${tarea.proyecto_id}`)}
@@ -368,7 +368,7 @@ export default function DashboardPage() {
                       onClick={(e) => enviarAlerta(tarea, e)}
                       disabled={alertando === tarea.id}
                       title={tarea.asignado_a ? 'Alertar al responsable por chat' : 'Alertar en el canal del proyecto'}
-                      className={`p-1.5 rounded-lg transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100 disabled:opacity-50 ${
+                      className={`p-1.5 rounded-lg transition-colors flex-shrink-0 disabled:opacity-50 ${
                         urgente
                           ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30'
                           : 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/30'
