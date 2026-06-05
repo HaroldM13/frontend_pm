@@ -38,6 +38,7 @@ export default function ChatPage() {
   const [salaActiva, setSalaActiva] = useState<SalaChat | null>(null);
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [texto, setTexto] = useState('');
+  const [borradores, setBorradores] = useState<Record<string, string>>({});
   const [enviando, setEnviando] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [tab, setTab] = useState<Tab>('directo');
@@ -137,6 +138,12 @@ export default function ChatPage() {
     setMensajes([]);
     setReplyTo(null);
     setMenciones([]);
+    setMentionQuery(null);
+    // Restaurar borrador de esta sala (o vacío)
+    setTexto((prev) => {
+      // Guardar borrador de la sala anterior está hecho en handleTextoChange
+      return borradores[salaActiva.id] ?? '';
+    });
 
     chatApi.historial(salaActiva.id)
       .then(({ data }) => setMensajes(data))
@@ -303,6 +310,9 @@ export default function ChatPage() {
   // Detectar @mención en el texto
   const handleTextoChange = (value: string) => {
     setTexto(value);
+    if (salaActiva) {
+      setBorradores((prev) => ({ ...prev, [salaActiva.id]: value }));
+    }
     const palabras = value.split(/\s/);
     const ultima = palabras[palabras.length - 1];
     if (ultima.startsWith('@') && ultima.length >= 1) {
@@ -336,6 +346,7 @@ export default function ChatPage() {
       reply_to_id: replyTo?.id ?? null,
     }));
     setTexto('');
+    if (salaActiva) setBorradores((prev) => ({ ...prev, [salaActiva.id]: '' }));
     setReplyTo(null);
     setMenciones([]);
     setMentionQuery(null);
@@ -365,7 +376,14 @@ export default function ChatPage() {
     const archivo = e.target.files?.[0];
     if (!archivo || !salaActiva) return;
     setEnviando(true);
-    try { await chatApi.enviarArchivo(salaActiva.id, archivo); }
+    try {
+      // Fotos tomadas con la cámara llegan como image/* — enviarlas por el endpoint de imagen
+      if (archivo.type.startsWith('image/')) {
+        await chatApi.enviarImagen(salaActiva.id, archivo, menciones);
+      } else {
+        await chatApi.enviarArchivo(salaActiva.id, archivo);
+      }
+    }
     catch (err) { toast.error(mensajeError(err)); }
     finally { setEnviando(false); e.target.value = ''; }
   };
