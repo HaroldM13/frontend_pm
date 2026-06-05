@@ -17,17 +17,18 @@ import { authApi } from '../../services/api';
 
 interface SidebarProps {
   onClose?: () => void;
+  noLeidos?: number;
 }
 
 const navItems = [
   { to: '/dashboard', icon: IconLayoutDashboard, label: 'Dashboard' },
   { to: '/areas', icon: IconBuilding, label: 'Áreas' },
   { to: '/proyectos', icon: IconFolder, label: 'Proyectos' },
-  { to: '/chat', icon: IconMessage2, label: 'Chat' },
+  { to: '/chat', icon: IconMessage2, label: 'Chat', badge: true },
   { to: '/usuarios', icon: IconUsers, label: 'Usuarios' },
 ];
 
-export default function Sidebar({ onClose }: SidebarProps) {
+export default function Sidebar({ onClose, noLeidos = 0 }: SidebarProps) {
   const { usuario, logout } = useAuth();
   const { tema, toggleTema } = useTema();
   const navigate = useNavigate();
@@ -73,7 +74,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
       {/* Navegación */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map(({ to, icon: Icon, label }) => (
+        {navItems.map(({ to, icon: Icon, label, badge }) => (
           <NavLink
             key={to}
             to={to}
@@ -86,8 +87,20 @@ export default function Sidebar({ onClose }: SidebarProps) {
               }`
             }
           >
-            <Icon size={18} />
-            {label}
+            <div className="relative flex-shrink-0">
+              <Icon size={18} />
+              {badge && noLeidos > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                  {noLeidos > 99 ? '99+' : noLeidos}
+                </span>
+              )}
+            </div>
+            <span className="flex-1">{label}</span>
+            {badge && noLeidos > 0 && (
+              <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                {noLeidos > 99 ? '99+' : noLeidos}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

@@ -1,11 +1,12 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
   IconFolder, IconBuilding, IconClipboardList, IconFlag,
   IconAlertTriangle, IconCircleCheck, IconClock, IconArrowRight,
-  IconLayoutKanban, IconChartBar, IconTrendingUp,
+  IconLayoutKanban, IconChartBar, IconTrendingUp, IconBell,
 } from '@tabler/icons-react';
-import { areasApi, proyectosApi, tareasApi, mensajeError } from '../services/api';
+import { areasApi, proyectosApi, tareasApi, chatApi, mensajeError } from '../services/api';
 import type { Area, Proyecto, Tarea } from '../interfaces';
 import { useAuth } from '../context/AuthContext';
 
@@ -34,6 +35,7 @@ export default function DashboardPage() {
   const [todasLasTareas, setTodasLasTareas] = useState<Tarea[]>([]);
   const [proyectoNombre, setProyectoNombre] = useState<Record<string, string>>({});
   const [cargando, setCargando] = useState(true);
+  const [alertando, setAlertando] = useState<string | null>(null);
 
   useEffect(() => {
     const cargar = async () => {
@@ -113,6 +115,20 @@ export default function DashboardPage() {
       .sort((a, b) => (a.fecha_vencimiento! > b.fecha_vencimiento! ? 1 : -1))
       .slice(0, 5);
   }, [todasLasTareas]);
+
+  const enviarAlerta = async (tarea: Tarea, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setAlertando(tarea.id);
+    try {
+      const { data } = await chatApi.alertaTarea(tarea.id);
+      const destino = (data as { asignado: boolean }).asignado ? 'el responsable asignado' : 'el canal del proyecto';
+      toast.success(`Alerta enviada a ${destino} por el chat`);
+    } catch (err) {
+      toast.error(mensajeError(err));
+    } finally {
+      setAlertando(null);
+    }
+  };
 
   if (cargando) {
     return (
@@ -329,22 +345,38 @@ export default function DashboardPage() {
                 const diff = Math.round((fecha.getTime() - hoy.getTime()) / 86400000);
                 const urgente = diff <= 1;
                 return (
-                  <button
+                  <div
                     key={tarea.id}
-                    onClick={() => navigate(`/proyectos/${tarea.proyecto_id}`)}
-                    className="w-full text-left px-5 py-3 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
+                    className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors group"
                   >
-                    <IconLayoutKanban size={14} className={`mt-0.5 flex-shrink-0 ${urgente ? 'text-red-500' : 'text-amber-500'}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-slate-700 dark:text-slate-200 truncate font-medium">{tarea.titulo}</p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{proyectoNombre[tarea.proyecto_id] ?? '—'}</p>
-                    </div>
+                    <button
+                      onClick={() => navigate(`/proyectos/${tarea.proyecto_id}`)}
+                      className="flex items-start gap-3 flex-1 min-w-0 text-left"
+                    >
+                      <IconLayoutKanban size={14} className={`mt-0.5 flex-shrink-0 ${urgente ? 'text-red-500' : 'text-amber-500'}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-slate-700 dark:text-slate-200 truncate font-medium">{tarea.titulo}</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{proyectoNombre[tarea.proyecto_id] ?? '—'}</p>
+                      </div>
+                    </button>
                     <span className={`text-xs font-semibold flex-shrink-0 px-2 py-0.5 rounded-full ${
                       urgente ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
                     }`}>
                       {diff === 0 ? 'Hoy' : diff === 1 ? 'Mañana' : `${diff} días`}
                     </span>
-                  </button>
+                    <button
+                      onClick={(e) => enviarAlerta(tarea, e)}
+                      disabled={alertando === tarea.id}
+                      title={tarea.asignado_a ? 'Alertar al responsable por chat' : 'Alertar en el canal del proyecto'}
+                      className={`p-1.5 rounded-lg transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100 disabled:opacity-50 ${
+                        urgente
+                          ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30'
+                          : 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/30'
+                      }`}
+                    >
+                      <IconBell size={14} className={alertando === tarea.id ? 'animate-pulse' : ''} />
+                    </button>
+                  </div>
                 );
               })}
             </div>

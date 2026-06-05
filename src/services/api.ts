@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios';
-import type { TokenResponse, Usuario, Area, Proyecto, Tarea, HoraLog, Sprint, Epica, Mensaje, SalaChat, ActividadMensual, Estado, Evidencia, Checklist, ColumnaCustom } from '../interfaces';
+import type { TokenResponse, Usuario, HorarioTrabajo, Area, Proyecto, Tarea, HoraLog, Sprint, Epica, Mensaje, SalaChat, ActividadMensual, Estado, Evidencia, Checklist, ColumnaCustom } from '../interfaces';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8001';
 
@@ -58,12 +58,24 @@ export const authApi = {
 
 // ─── Usuarios ────────────────────────────────────────────────────────────────
 
+export interface DisponibilidadResponse {
+  disponible: boolean;
+  horario_trabajo: HorarioTrabajo | null;
+  nombre: string;
+}
+
 export const usuariosApi = {
   listar: () => api.get<Usuario[]>('/usuarios/'),
   buscar: (q: string) => api.get<Usuario[]>('/usuarios/buscar', { params: { q } }),
   perfil: () => api.get<Usuario>('/usuarios/perfil'),
   actualizar: (nombre: string) => api.patch<Usuario>('/usuarios/perfil', { nombre }),
   eliminar: () => api.delete('/usuarios/perfil'),
+  actualizarHorario: (horario_trabajo: HorarioTrabajo) =>
+    api.patch<Usuario>('/usuarios/horario', { horario_trabajo }),
+  toggleDisponible: (disponible_manual: boolean) =>
+    api.patch<Usuario>('/usuarios/disponible', { disponible_manual }),
+  disponibilidad: (id: string) =>
+    api.get<DisponibilidadResponse>(`/usuarios/${id}/disponible`),
 };
 
 // ─── Áreas ───────────────────────────────────────────────────────────────────
@@ -101,6 +113,7 @@ export const proyectosApi = {
 
 export const tareasApi = {
   listarPorProyecto: (proyectoId: string) => api.get<Tarea[]>(`/tareas/proyecto/${proyectoId}`),
+  obtener: (id: string) => api.get<Tarea>(`/tareas/${id}`),
   crear: (datos: Partial<Tarea> & { titulo: string; proyecto_id: string }) =>
     api.post<Tarea>('/tareas/', datos),
   actualizar: (id: string, cambios: Partial<Tarea>) => api.patch<Tarea>(`/tareas/${id}`, cambios),
@@ -165,6 +178,9 @@ export const chatApi = {
     form.append('archivo', archivo);
     return api.post<Mensaje>(`/chat/salas/${salaId}/archivo`, form);
   },
+  alertaTarea: (tareaId: string) => api.post(`/chat/alerta-tarea/${tareaId}`),
+  noLeidos: () => api.get<{ total: number; por_sala: Record<string, number> }>('/chat/no-leidos'),
+  marcarLeida: (salaId: string) => api.post(`/chat/salas/${salaId}/leer`),
 };
 
 // ─── Estados (stories) ───────────────────────────────────────────────────────

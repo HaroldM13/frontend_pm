@@ -5,10 +5,10 @@ import {
   IconMessage2, IconSend, IconPaperclip, IconPhoto, IconArrowLeft,
   IconPlus, IconX, IconSearch, IconUsers, IconHash, IconCornerUpLeft,
   IconLayoutKanban, IconCheck, IconMicrophone, IconMicrophoneOff,
-  IconExternalLink,
+  IconExternalLink, IconClock, IconAlertCircle,
 } from '@tabler/icons-react';
-import { chatApi, usuariosApi, mensajeError } from '../services/api';
-import type { SalaChat, Mensaje, Usuario } from '../interfaces';
+import { chatApi, usuariosApi, tareasApi, mensajeError } from '../services/api';
+import type { SalaChat, Mensaje, Usuario, HorarioTrabajo } from '../interfaces';
 import { useAuth } from '../context/AuthContext';
 import BarraEstados from '../components/chat/BarraEstados';
 
@@ -66,6 +66,29 @@ export default function ChatPage() {
   const [buscandoGrupo, setBuscandoGrupo] = useState(false);
   const [creandoGrupo, setCreandoGrupo] = useState(false);
 
+  // Tareas eliminadas (IDs conocidos)
+  const [tareasEliminadas, setTareasEliminadas] = useState<Set<string>>(new Set());
+  const [verificandoTarea, setVerificandoTarea] = useState<string | null>(null);
+
+  // Horario laboral — otro usuario en DM
+  const [disponibilidadOtro, setDisponibilidadOtro] = useState<{
+    disponible: boolean;
+    nombre: string;
+    horario: HorarioTrabajo | null;
+  } | null>(null);
+  const [confirmarEnvioFueraHorario, setConfirmarEnvioFueraHorario] = useState(false);
+
+  // Modal configuración horario propio
+  const [modalHorario, setModalHorario] = useState(false);
+  const [horarioForm, setHorarioForm] = useState<HorarioTrabajo>({
+    activo: false,
+    dias: [0, 1, 2, 3, 4],
+    hora_inicio: '09:00',
+    hora_fin: '18:00',
+    disponible_manual: false,
+  });
+  const [guardandoHorario, setGuardandoHorario] = useState(false);
+
   // Grabación de audio
   const [grabando, setGrabando] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -118,6 +141,7 @@ export default function ChatPage() {
     chatApi.historial(salaActiva.id)
       .then(({ data }) => setMensajes(data))
       .catch(() => {});
+    chatApi.marcarLeida(salaActiva.id).catch(() => {});
 
     const token = localStorage.getItem('token') ?? '';
     const ws = new WebSocket(`${WS_URL}/chat/ws/${salaActiva.id}?token=${token}`);
@@ -138,6 +162,29 @@ export default function ChatPage() {
       .then(({ data }) => setMiembrosSala(data))
       .catch(() => setMiembrosSala([]));
   }, [salaActiva]);
+
+  // Verificar disponibilidad del otro usuario en DM
+  useEffect(() => {
+    setDisponibilidadOtro(null);
+    if (!salaActiva || salaActiva.tipo !== 'directo' || !usuario) return;
+    const otroId = salaActiva.miembros.find((id) => id !== usuario.id);
+    if (!otroId) return;
+    usuariosApi.disponibilidad(otroId)
+      .then(({ data }) => setDisponibilidadOtro({
+        disponible: data.disponible,
+        nombre: data.nombre,
+        horario: data.horario_trabajo,
+      }))
+      .catch(() => setDisponibilidadOtro(null));
+  }, [salaActiva, usuario]);
+
+  // Cargar horario propio al abrir modal
+  useEffect(() => {
+    if (!modalHorario) return;
+    usuariosApi.perfil().then(({ data }) => {
+      if (data.horario_trabajo) setHorarioForm(data.horario_trabajo);
+    }).catch(() => {});
+  }, [modalHorario]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -175,6 +222,44 @@ export default function ChatPage() {
   const seleccionarSala = (sala: SalaChat) => {
     setSalaActiva(sala);
     setVistaMovil('mensajes');
+  };
+
+  const verTarea = async (tareaId: string, proyectoId: string) => {
+    if (tareasEliminadas.has(tareaId)) return;
+    setVerificandoTarea(tareaId);
+    try {
+      await tareasApi.obtener(tareaId);
+      navigate(`/proyectos/${proyectoId}`, { state: { abrirTareaId: tareaId } });
+    } catch {
+      setTareasEliminadas((prev) => new Set([...prev, tareaId]));
+    } finally {
+      setVerificandoTarea(null);
+    }
+  };
+
+  const guardarHorario = async () => {
+    setGuardandoHorario(true);
+    try {
+      await usuariosApi.actualizarHorario(horarioForm);
+      setModalHorario(false);
+      toast.success('Horario laboral actualizado');
+    } catch (err) {
+      toast.error(mensajeError(err));
+    } finally {
+      setGuardandoHorario(false);
+    }
+  };
+
+  const toggleDisponibleManual = async () => {
+    if (!usuario) return;
+    const nuevo = !(horarioForm.disponible_manual);
+    try {
+      const { data } = await usuariosApi.toggleDisponible(nuevo);
+      if (data.horario_trabajo) setHorarioForm(data.horario_trabajo);
+      toast.success(nuevo ? 'Ahora estás disponible' : 'Disponibilidad manual desactivada');
+    } catch (err) {
+      toast.error(mensajeError(err));
+    }
   };
 
   const iniciarDM = async (dest: Usuario) => {
@@ -243,7 +328,7 @@ export default function ChatPage() {
     setMentionQuery(null);
   };
 
-  const enviarMensaje = () => {
+  const enviarMensajeReal = () => {
     if (!texto.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     wsRef.current.send(JSON.stringify({
       contenido: texto.trim(),
@@ -254,6 +339,17 @@ export default function ChatPage() {
     setReplyTo(null);
     setMenciones([]);
     setMentionQuery(null);
+    setConfirmarEnvioFueraHorario(false);
+  };
+
+  const enviarMensaje = () => {
+    if (!texto.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    // Si el otro está fuera de horario en un DM, pedir confirmación
+    if (salaActiva?.tipo === 'directo' && disponibilidadOtro && !disponibilidadOtro.disponible) {
+      setConfirmarEnvioFueraHorario(true);
+      return;
+    }
+    enviarMensajeReal();
   };
 
   const enviarImagen = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -460,10 +556,25 @@ export default function ChatPage() {
             )}
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm truncate">{nombreSala(salaActiva)}</p>
-              <p className="text-xs text-slate-400 dark:text-slate-500">
-                {salaActiva.tipo === 'directo' ? 'Mensaje directo' : salaActiva.tipo === 'grupo' ? `Grupo · ${salaActiva.miembros.length} miembros` : salaActiva.tipo}
+              <p className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                {salaActiva.tipo === 'directo' && disponibilidadOtro ? (
+                  <>
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${disponibilidadOtro.disponible ? 'bg-green-500' : 'bg-slate-400'}`} />
+                    {disponibilidadOtro.disponible ? 'En horario laboral' : 'Fuera de horario'}
+                  </>
+                ) : salaActiva.tipo === 'directo' ? 'Mensaje directo'
+                  : salaActiva.tipo === 'grupo' ? `Grupo · ${salaActiva.miembros.length} miembros`
+                  : salaActiva.tipo}
               </p>
             </div>
+            {/* Botón configurar horario propio */}
+            <button
+              onClick={() => setModalHorario(true)}
+              title="Configurar mi horario laboral"
+              className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors flex-shrink-0"
+            >
+              <IconClock size={16} />
+            </button>
             {/* Miembros del grupo/canal como avatares */}
             {(salaActiva.tipo === 'grupo' || salaActiva.tipo === 'area' || salaActiva.tipo === 'proyecto') && miembrosSala.length > 0 && (
               <div className="hidden md:flex -space-x-1.5">
@@ -567,19 +678,25 @@ export default function ChatPage() {
                                 {msg.contenido}
                               </p>
                             )}
-                            {msg.tarea_proyecto_id && (
+                            {msg.tarea_id && tareasEliminadas.has(msg.tarea_id) ? (
+                              <p className="mt-2 flex items-center gap-1 text-xs text-red-400 dark:text-red-400">
+                                <IconAlertCircle size={12} />
+                                Esta tarea fue eliminada
+                              </p>
+                            ) : msg.tarea_proyecto_id && msg.tarea_id ? (
                               <button
-                                onClick={() => navigate(`/proyectos/${msg.tarea_proyecto_id}`, { state: { abrirTareaId: msg.tarea_id } })}
-                                className={`mt-2 flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors ${
+                                onClick={() => verTarea(msg.tarea_id!, msg.tarea_proyecto_id!)}
+                                disabled={verificandoTarea === msg.tarea_id}
+                                className={`mt-2 flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${
                                   esMio
                                     ? 'bg-white/20 hover:bg-white/30 text-white'
                                     : 'bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400'
                                 }`}
                               >
                                 <IconExternalLink size={12} />
-                                Ver tarea
+                                {verificandoTarea === msg.tarea_id ? 'Verificando...' : 'Ver tarea'}
                               </button>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       ) : msg.subtipo === 'imagen' && msg.archivo_url ? (
@@ -642,6 +759,16 @@ export default function ChatPage() {
 
           {/* Input area */}
           <div className="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+            {/* Banner fuera de horario */}
+            {salaActiva.tipo === 'directo' && disponibilidadOtro && !disponibilidadOtro.disponible && (
+              <div className="flex items-start gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/40">
+                <IconClock size={15} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 dark:text-amber-400 flex-1">
+                  <span className="font-semibold">{disponibilidadOtro.nombre}</span> no se encuentra en su horario laboral.
+                  {' '}Tu mensaje se entregará cuando esté disponible.
+                </p>
+              </div>
+            )}
             {/* Reply preview */}
             {replyTo && (
               <div className="flex items-start gap-3 px-4 py-2 border-b border-slate-100 dark:border-slate-700 bg-indigo-50 dark:bg-indigo-900/20">
@@ -799,6 +926,148 @@ export default function ChatPage() {
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmación envío fuera de horario */}
+      {confirmarEnvioFueraHorario && disponibilidadOtro && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-6 w-full max-w-sm">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
+                <IconClock size={20} className="text-amber-600 dark:text-amber-400" />
+              </div>
+              <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">Fuera de horario laboral</h2>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mb-5 leading-relaxed">
+              Lo sentimos, <span className="font-semibold">{disponibilidadOtro.nombre}</span> no se encuentra
+              en su horario laboral en este momento. Apenas esté disponible, este mensaje le será entregado.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmarEnvioFueraHorario(false)}
+                className="flex-1 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={enviarMensajeReal}
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition-colors"
+              >
+                Enviar de todas formas
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal configuración horario laboral */}
+      {modalHorario && (
+        <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 md:p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-t-2xl md:rounded-2xl shadow-xl p-5 w-full md:max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2">
+                <IconClock size={18} className="text-indigo-600 dark:text-indigo-400" />
+                <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">Mi horario laboral</h2>
+              </div>
+              <button onClick={() => setModalHorario(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                <IconX size={20} />
+              </button>
+            </div>
+
+            {/* Toggle activo */}
+            <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl mb-4">
+              <div>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Activar horario laboral</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">Tus compañeros verán aviso fuera de tu horario</p>
+              </div>
+              <button
+                onClick={() => setHorarioForm((p) => ({ ...p, activo: !p.activo }))}
+                className={`relative w-11 h-6 rounded-full transition-colors ${horarioForm.activo ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${horarioForm.activo ? 'translate-x-5' : ''}`} />
+              </button>
+            </div>
+
+            {horarioForm.activo && (
+              <div className="space-y-4">
+                {/* Días */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Días laborales</label>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setHorarioForm((p) => ({
+                          ...p,
+                          dias: p.dias.includes(i) ? p.dias.filter((x) => x !== i) : [...p.dias, i],
+                        }))}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          horarioForm.dias.includes(i)
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Horas */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Entrada</label>
+                    <input
+                      type="time"
+                      value={horarioForm.hora_inicio}
+                      onChange={(e) => setHorarioForm((p) => ({ ...p, hora_inicio: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Salida</label>
+                    <input
+                      type="time"
+                      value={horarioForm.hora_fin}
+                      onChange={(e) => setHorarioForm((p) => ({ ...p, hora_fin: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                </div>
+
+                {/* Disponible manual */}
+                <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700/40 rounded-xl">
+                  <div>
+                    <p className="text-sm font-semibold text-green-800 dark:text-green-300">Disponible ahora</p>
+                    <p className="text-xs text-green-600 dark:text-green-500">Actívate manualmente fuera de horario (urgencias)</p>
+                  </div>
+                  <button
+                    onClick={toggleDisponibleManual}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${horarioForm.disponible_manual ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${horarioForm.disponible_manual ? 'translate-x-5' : ''}`} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setModalHorario(false)}
+                className="flex-1 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm font-medium rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={guardarHorario}
+                disabled={guardandoHorario}
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-sm font-medium rounded-xl transition-colors"
+              >
+                {guardandoHorario ? 'Guardando...' : 'Guardar horario'}
+              </button>
             </div>
           </div>
         </div>

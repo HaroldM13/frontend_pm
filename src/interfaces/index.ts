@@ -1,5 +1,13 @@
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
+export interface HorarioTrabajo {
+  activo: boolean;
+  dias: number[];  // 0=Lun … 6=Dom
+  hora_inicio: string;
+  hora_fin: string;
+  disponible_manual: boolean;
+}
+
 export interface Usuario {
   id: string;
   nombre: string;
@@ -7,6 +15,8 @@ export interface Usuario {
   telefono: string;
   avatar_url?: string;
   created_at: string;
+  horario_trabajo?: HorarioTrabajo;
+  disponible?: boolean;
 }
 
 export interface TokenResponse {

@@ -45,6 +45,7 @@ export default function ProyectoPage() {
   const [tareaModalAbierta, setTareaModalAbierta] = useState<Tarea | null>(null);
   const [mostrarModalTarea, setMostrarModalTarea] = useState(false);
   const [columnaParaNuevaTarea, setColumnaParaNuevaTarea] = useState<string>('backlog');
+  const [avisoTareaEliminada, setAvisoTareaEliminada] = useState(false);
 
   const abrirTareaDesdeReporte = (tareaId: string) => {
     const tarea = tareas.find((t) => t.id === tareaId);
@@ -94,7 +95,12 @@ export default function ProyectoPage() {
         const state = location.state as { abrirTareaId?: string } | null;
         if (state?.abrirTareaId) {
           const tarea = tareasData.find((t) => t.id === state.abrirTareaId);
-          if (tarea) setTareaModalAbierta(tarea);
+          if (tarea) {
+            setTareaModalAbierta(tarea);
+            setMostrarModalTarea(true);
+          } else {
+            setAvisoTareaEliminada(true);
+          }
           // Limpiar el state para que no re-abra al refrescar
           navigate(location.pathname, { replace: true, state: null });
         }
@@ -162,6 +168,13 @@ export default function ProyectoPage() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Aviso tarea eliminada */}
+      {avisoTareaEliminada && (
+        <div className="mx-4 md:mx-8 mt-3 flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm">
+          <span className="flex-1">Esta tarea ya no existe o fue eliminada.</span>
+          <button onClick={() => setAvisoTareaEliminada(false)} className="text-amber-500 hover:text-amber-700 font-bold">✕</button>
+        </div>
+      )}
       {/* Header del proyecto */}
       <div className="px-4 md:px-8 py-4 border-b border-slate-200 bg-white">
         <div className="flex items-center gap-3 mb-3">
