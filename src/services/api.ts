@@ -156,7 +156,8 @@ export const chatApi = {
     api.post<SalaChat>('/chat/directo', { destinatario_id: destinatarioId }),
   crearGrupo: (nombre: string, miembroIds: string[]) =>
     api.post<SalaChat>('/chat/grupos', { nombre, miembro_ids: miembroIds }),
-  historial: (salaId: string) => api.get<Mensaje[]>(`/chat/salas/${salaId}/mensajes`),
+  historial: (salaId: string, antesDe?: string) =>
+    api.get<Mensaje[]>(`/chat/salas/${salaId}/mensajes`, { params: antesDe ? { antes_de: antesDe } : {} }),
   miembrosDeUnaSala: (salaId: string) => api.get<Usuario[]>(`/chat/salas/${salaId}/miembros`),
   compartirTarea: (salaId: string, datos: {
     tarea_id: string;

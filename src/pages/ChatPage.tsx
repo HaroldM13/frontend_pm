@@ -5,7 +5,7 @@ import {
   IconMessage2, IconSend, IconPaperclip, IconPhoto, IconArrowLeft,
   IconPlus, IconX, IconSearch, IconUsers, IconHash, IconCornerUpLeft,
   IconLayoutKanban, IconCheck, IconMicrophone, IconMicrophoneOff,
-  IconExternalLink, IconClock, IconAlertCircle,
+  IconExternalLink, IconClock, IconAlertCircle, IconZoomIn,
 } from '@tabler/icons-react';
 import { chatApi, usuariosApi, tareasApi, mensajeError } from '../services/api';
 import type { SalaChat, Mensaje, Usuario, HorarioTrabajo } from '../interfaces';
@@ -37,6 +37,9 @@ export default function ChatPage() {
   const [todasLasSalas, setTodasLasSalas] = useState<SalaChat[]>([]);
   const [salaActiva, setSalaActiva] = useState<SalaChat | null>(null);
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
+  const [hayMasMensajes, setHayMasMensajes] = useState(false);
+  const [cargandoMas, setCargandoMas] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [texto, setTexto] = useState('');
   const [borradores, setBorradores] = useState<Record<string, string>>({});
   const [enviando, setEnviando] = useState(false);
@@ -97,6 +100,9 @@ export default function ChatPage() {
 
   const wsRef = useRef<WebSocket | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+  const mensajesRef = useRef<HTMLDivElement>(null);
+  const esScrollInicial = useRef(true);
   const busquedaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busquedaGrupoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { usuario } = useAuth();
@@ -136,14 +142,18 @@ export default function ChatPage() {
 
     wsRef.current?.close();
     setMensajes([]);
+    setHayMasMensajes(false);
     setReplyTo(null);
     setMenciones([]);
     setMentionQuery(null);
-    // Restaurar borrador de esta sala (o vacío)
+    esScrollInicial.current = true;
     setTexto(borradores[salaActiva.id] ?? '');
 
     chatApi.historial(salaActiva.id)
-      .then(({ data }) => setMensajes(data))
+      .then(({ data }) => {
+        setMensajes(data);
+        setHayMasMensajes(data.length === 50);
+      })
       .catch(() => {});
     chatApi.marcarLeida(salaActiva.id).catch(() => {});
 
@@ -191,8 +201,26 @@ export default function ChatPage() {
   }, [modalHorario]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (esScrollInicial.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      esScrollInicial.current = false;
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [mensajes]);
+
+  // IntersectionObserver: cargar más cuando el tope es visible
+  useEffect(() => {
+    const el = topRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) cargarMasMensajes(); },
+      { threshold: 1.0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hayMasMensajes, mensajes]);
 
   // Búsqueda de usuarios DM con debounce
   useEffect(() => {
@@ -226,6 +254,26 @@ export default function ChatPage() {
   const seleccionarSala = (sala: SalaChat) => {
     setSalaActiva(sala);
     setVistaMovil('mensajes');
+  };
+
+  const cargarMasMensajes = async () => {
+    if (!salaActiva || cargandoMas || !hayMasMensajes || mensajes.length === 0) return;
+    setCargandoMas(true);
+    const primerIdActual = mensajes[0].id;
+    const alturaAntes = mensajesRef.current?.scrollHeight ?? 0;
+    try {
+      const { data } = await chatApi.historial(salaActiva.id, primerIdActual);
+      if (data.length === 0) { setHayMasMensajes(false); return; }
+      setHayMasMensajes(data.length === 50);
+      setMensajes((prev) => [...data, ...prev]);
+      // Mantener posición de scroll tras prepend
+      requestAnimationFrame(() => {
+        if (mensajesRef.current) {
+          mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight - alturaAntes;
+        }
+      });
+    } catch { /* silencioso */ }
+    finally { setCargandoMas(false); }
   };
 
   const verTarea = async (tareaId: string, proyectoId: string) => {
@@ -401,9 +449,15 @@ export default function ChatPage() {
     if (!archivo || !salaActiva) return;
     setEnviando(true);
     try {
-      const esImagen = archivo.type.startsWith('image/') || archivo.type === '';
+      const nombre = archivo.name.toLowerCase();
+      const esVideoFile = archivo.type.startsWith('video/') ||
+        /\.(mp4|mov|avi|mkv|webm|3gp|m4v)$/.test(nombre);
+      const esImagen = !esVideoFile && (
+        archivo.type.startsWith('image/') ||
+        archivo.type === '' ||
+        /\.(jpg|jpeg|png|gif|webp|heic|bmp|tiff)$/.test(nombre)
+      );
       if (esImagen) {
-        // Comprimir client-side — soporta cualquier formato incluyendo HEIC
         const comprimido = await comprimirImagenCliente(archivo);
         await chatApi.enviarImagen(salaActiva.id, comprimido, menciones);
       } else {
@@ -640,7 +694,18 @@ export default function ChatPage() {
           </div>
 
           {/* Área de mensajes */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1 bg-slate-50 dark:bg-slate-900">
+          <div ref={mensajesRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-1 bg-slate-50 dark:bg-slate-900">
+            {/* Sensor de scroll al tope + spinner */}
+            <div ref={topRef} className="h-1" />
+            {cargandoMas && (
+              <div className="flex items-center justify-center gap-2 py-3 text-xs text-slate-400 dark:text-slate-500">
+                <svg className="animate-spin w-3.5 h-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                Cargando mensajes anteriores...
+              </div>
+            )}
             {mensajes.map((msg) => {
               const esMio = msg.remitente_id === usuario?.id;
               const esSistema = msg.remitente_id === 'sistema';
@@ -747,10 +812,19 @@ export default function ChatPage() {
                           </div>
                         </div>
                       ) : msg.subtipo === 'imagen' && msg.archivo_url ? (
-                        <div className={`rounded-2xl overflow-hidden ${esMio ? 'rounded-tr-sm' : 'rounded-tl-sm'}`}>
-                          <a href={`${API_URL}${msg.archivo_url}`} target="_blank" rel="noreferrer">
-                            <img src={`${API_URL}${msg.archivo_url}`} alt="imagen" className="max-w-full rounded-lg cursor-pointer hover:opacity-90" />
-                          </a>
+                        <div className={`rounded-2xl overflow-hidden relative group/img ${esMio ? 'rounded-tr-sm' : 'rounded-tl-sm'}`}>
+                          <img
+                            src={`${API_URL}${msg.archivo_url}`}
+                            alt="imagen"
+                            className="max-w-full rounded-lg cursor-zoom-in hover:opacity-95 transition-opacity"
+                            onClick={() => setLightboxUrl(`${API_URL}${msg.archivo_url}`)}
+                          />
+                          <button
+                            onClick={() => setLightboxUrl(`${API_URL}${msg.archivo_url}`)}
+                            className="absolute top-2 right-2 opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/40 hover:bg-black/60 text-white rounded-full p-1"
+                          >
+                            <IconZoomIn size={14} />
+                          </button>
                         </div>
                       ) : msg.subtipo === 'archivo' && esAudio(msg.archivo_nombre) ? (
                         <div className={`rounded-2xl px-3 py-2.5 ${esMio ? 'bg-indigo-600 rounded-tr-sm' : 'bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-tl-sm'}`}>
@@ -1218,6 +1292,27 @@ export default function ChatPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Lightbox de imágenes */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-[80]"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            onClick={() => setLightboxUrl(null)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors"
+          >
+            <IconX size={22} />
+          </button>
+          <div className="max-w-4xl max-h-[90vh] px-4" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={lightboxUrl}
+              alt="imagen"
+              className="max-h-[90vh] max-w-full object-contain rounded-lg select-none"
+            />
           </div>
         </div>
       )}
