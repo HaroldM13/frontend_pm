@@ -201,11 +201,15 @@ export default function ChatPage() {
   }, [modalHorario]);
 
   useEffect(() => {
-    if (esScrollInicial.current && mensajes.length > 0) {
-      // Scroll directo al fondo — compatible con todos los browsers
+    const scrollAlFondo = () => {
       if (mensajesRef.current) {
         mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight;
       }
+    };
+    if (esScrollInicial.current && mensajes.length > 0) {
+      scrollAlFondo();
+      // Segunda pasada para cuando las imágenes terminen de cargar
+      setTimeout(scrollAlFondo, 300);
       esScrollInicial.current = false;
     } else if (!esScrollInicial.current) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
