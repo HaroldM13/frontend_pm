@@ -140,10 +140,7 @@ export default function ChatPage() {
     setMenciones([]);
     setMentionQuery(null);
     // Restaurar borrador de esta sala (o vacío)
-    setTexto((prev) => {
-      // Guardar borrador de la sala anterior está hecho en handleTextoChange
-      return borradores[salaActiva.id] ?? '';
-    });
+    setTexto(borradores[salaActiva.id] ?? '');
 
     chatApi.historial(salaActiva.id)
       .then(({ data }) => setMensajes(data))
