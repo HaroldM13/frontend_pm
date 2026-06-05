@@ -448,6 +448,9 @@ export default function ChatPage() {
   const esAudio = (nombre?: string) =>
     /\.(webm|ogg|mp3|m4a|wav|opus)$/i.test(nombre ?? '');
 
+  const esVideo = (nombre?: string) =>
+    /\.(mp4|mov|avi|mkv|webm|3gp|m4v)$/i.test(nombre ?? '');
+
   // Nombre visible para una sala
   const nombreSala = (sala: SalaChat) => {
     if (sala.tipo === 'directo') {
@@ -756,6 +759,16 @@ export default function ChatPage() {
                             src={`${API_URL}${msg.archivo_url}`}
                             className="max-w-full rounded-lg"
                             style={{ height: '36px', minWidth: '200px' }}
+                          />
+                        </div>
+                      ) : msg.subtipo === 'archivo' && esVideo(msg.archivo_nombre) ? (
+                        <div className={`rounded-2xl overflow-hidden ${esMio ? 'rounded-tr-sm' : 'rounded-tl-sm'}`}>
+                          <video
+                            controls
+                            src={`${API_URL}${msg.archivo_url}`}
+                            className="max-w-full rounded-2xl"
+                            style={{ maxHeight: '320px' }}
+                            playsInline
                           />
                         </div>
                       ) : msg.subtipo === 'archivo' ? (
