@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { IconBriefcase, IconEye, IconEyeOff } from '@tabler/icons-react';
+import { IconEye, IconEyeOff } from '@tabler/icons-react';
 import { authApi, mensajeError } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -34,13 +34,11 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-indigo-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Logo */}
-        <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="p-3 bg-indigo-600 rounded-xl">
-            <IconBriefcase size={28} className="text-white" />
-          </div>
+        <div className="flex items-center justify-center gap-4 mb-8">
+          <img src="/icon.svg" alt="WorkChat" className="w-14 h-14 drop-shadow-lg" />
           <div>
-            <h1 className="text-2xl font-bold text-white">JHT Project</h1>
-            <p className="text-indigo-300 text-sm">Manager + Chat</p>
+            <h1 className="text-2xl font-bold text-white">WorkChat</h1>
+            <p className="text-indigo-300 text-sm">Gestión + Chat corporativo</p>
           </div>
         </div>
 
