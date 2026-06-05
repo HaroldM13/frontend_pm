@@ -455,9 +455,11 @@ export default function ChatPage() {
       const nombre = archivo.name.toLowerCase();
       const esVideoFile = archivo.type.startsWith('video/') ||
         /\.(mp4|mov|avi|mkv|webm|3gp|m4v)$/.test(nombre);
-      // Solo comprimir si SABEMOS que es imagen (tipo explícito o extensión de imagen)
+      // Imagen: tipo explícito, extensión conocida, o tipo vacío (fotos de cámara en algunos Android)
+      // Si tipo vacío resulta ser video, comprimirImagenCliente fallará y el catch lo envía como archivo
       const esImagen = !esVideoFile && (
         archivo.type.startsWith('image/') ||
+        archivo.type === '' ||
         /\.(jpg|jpeg|png|gif|webp|heic|bmp|tiff)$/.test(nombre)
       );
       if (esImagen) {
