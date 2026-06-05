@@ -201,10 +201,13 @@ export default function ChatPage() {
   }, [modalHorario]);
 
   useEffect(() => {
-    if (esScrollInicial.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+    if (esScrollInicial.current && mensajes.length > 0) {
+      // Scroll directo al fondo — compatible con todos los browsers
+      if (mensajesRef.current) {
+        mensajesRef.current.scrollTop = mensajesRef.current.scrollHeight;
+      }
       esScrollInicial.current = false;
-    } else {
+    } else if (!esScrollInicial.current) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [mensajes]);
@@ -452,14 +455,19 @@ export default function ChatPage() {
       const nombre = archivo.name.toLowerCase();
       const esVideoFile = archivo.type.startsWith('video/') ||
         /\.(mp4|mov|avi|mkv|webm|3gp|m4v)$/.test(nombre);
+      // Solo comprimir si SABEMOS que es imagen (tipo explícito o extensión de imagen)
       const esImagen = !esVideoFile && (
         archivo.type.startsWith('image/') ||
-        archivo.type === '' ||
         /\.(jpg|jpeg|png|gif|webp|heic|bmp|tiff)$/.test(nombre)
       );
       if (esImagen) {
-        const comprimido = await comprimirImagenCliente(archivo);
-        await chatApi.enviarImagen(salaActiva.id, comprimido, menciones);
+        try {
+          const comprimido = await comprimirImagenCliente(archivo);
+          await chatApi.enviarImagen(salaActiva.id, comprimido, menciones);
+        } catch {
+          // Canvas no pudo procesarlo — enviar como archivo directamente
+          await chatApi.enviarArchivo(salaActiva.id, archivo);
+        }
       } else {
         await chatApi.enviarArchivo(salaActiva.id, archivo);
       }
